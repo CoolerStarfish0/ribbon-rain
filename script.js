@@ -82,13 +82,31 @@ axonLauncher?.addEventListener("click", () => axonPanel.hidden ? axonOpen() : ax
 axonClose?.addEventListener("click", axonHide);
 
 function axonProductMatches(term) {
-  const words = term.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2 && !["show","find","some","with","for","the","please","want","need","products","product","cheapest","available"].includes(w));
+  const normalized = term.toLowerCase();
   const active = state.products.filter(p => p.published !== false);
-  let results = active.filter(p => words.some(w => ((p.name || "") + " " + (p.description || "") + " " + (p.category || "")).toLowerCase().includes(w)));
-  if (!results.length && /cheap|lowest|least expensive/.test(term.toLowerCase())) results = active.slice().sort((a,b) => Number(a.price)-Number(b.price)).slice(0,3);
-  if (!results.length && /sticker/.test(term.toLowerCase())) results = active.filter(p => p.category === "stickers");
-  if (!results.length && /label/.test(term.toLowerCase())) results = active.filter(p => p.category === "labels");
-  return results.slice(0,4);
+  const words = normalized.split(/[^a-z0-9]+/).filter(w =>
+    w.length > 2 && ![
+      "show","find","some","with","for","the","please","want","need","products","product",
+      "cheapest","available","what","which","that","this","are","you","your","from",
+      "sell","have","much","does","cost","price","under","below","less","than","give",
+      "recommend","looking","something","anything","hello","hey","axon","can","could"
+    ].includes(w)
+  );
+  let results = active.filter(p => words.some(w =>
+    ((p.name || "") + " " + (p.description || "") + " " + (p.category || "") + " " + ((p.colours || []).join(" "))).toLowerCase().includes(w)
+  ));
+  if (/cheap|lowest|least expensive|most affordable|budget|low price/.test(normalized)) {
+    results = active.slice().sort((a, b) => Number(a.price) - Number(b.price)).slice(0, 3);
+  } else if (/most expensive|highest price|costliest/.test(normalized)) {
+    results = active.slice().sort((a, b) => Number(b.price) - Number(a.price)).slice(0, 3);
+  } else if (/\b(sticker|stickers)\b/.test(normalized)) {
+    results = active.filter(p => p.category === "stickers" || /sticker/i.test((p.name || "") + " " + (p.description || "")));
+  } else if (/\b(label|labels)\b/.test(normalized)) {
+    results = active.filter(p => p.category === "labels" || /label/i.test((p.name || "") + " " + (p.description || "")));
+  } else if (/\bbundle|bundles\b/.test(normalized)) {
+    results = active.filter(p => p.category === "bundles" || /bundle/i.test((p.name || "") + " " + (p.description || "")));
+  }
+  return results.slice(0, 4);
 }
 function axonShowProductResults(products) {
   if (!products.length) {
@@ -194,40 +212,101 @@ function axonShowListingForm() {
 }
 function axonRespond(raw) {
   const text = raw.trim();
-  const lower = text.toLowerCase();
-  if (/\b(create|add|make|new)\b.*\b(listing|product|item)\b|\b(listing|product)\b.*\b(create|add|make)\b/.test(lower)) {
-    if (axonIsAdmin) axonSay("Of course! Let's prepare the listing. I'll ask you to review it before saving.");
+  const lower = text.toLowerCase().replace(/[’']/g, "'");
+  const has = pattern => pattern.test(lower);
+
+  // Friendly small talk first, so greetings don't fall through to the help menu.
+  if (has(/^(hi|hello|hey|heya|hiya|yo|hii+|good morning|good afternoon|good evening)(\\s+axon)?[!.\\s]*$/)) {
+    const greetings = [
+      "Hey! ♡ Welcome to Ribbon Rain. Want to find stickers, school labels, or a cute little bundle?",
+      "Hiii! ✳ I'm here to help you shop. Tell me what you're looking for, or ask me about colours and prices.",
+      "Hey hey! ♡ What are we finding today — stickers, school labels, or something else?"
+    ];
+    axonSay(greetings[Math.floor(Math.random() * greetings.length)]);
+    return;
+  }
+  if (has(/^(thanks|thank you|thx|ty|thank u)(\\s+(axon|so much))?[!.\\s]*$/)) {
+    axonSay("You're so welcome! ♡ Let me know if you'd like help finding anything else.");
+    return;
+  }
+  if (has(/^(bye|goodbye|see you|cya|that's all|that is all)[!.\\s]*$/)) {
+    axonSay("Bye for now! ♡ Thanks for visiting Ribbon Rain.");
+    return;
+  }
+  if (has(/\\b(who are you|what are you|what is axon|who is axon)\\b/)) {
+    axonSay("I'm Axon, Ribbon Rain's little shopping helper. I can search the published catalogue, compare prices, explain colour choices, and help you navigate the shop. I'm not connected to a general-purpose AI service yet, so I won't pretend I can answer absolutely anything. ♡");
+    return;
+  }
+  if (has(/\\b(what do you sell|what does ribbon rain sell|what can i buy|what products do you have|show all products|everything you sell|your products)\\b/)) {
+    if (!state.products.filter(p => p.published !== false).length) {
+      axonSay("The live catalogue doesn't have any published products showing right now. You can check back soon, or browse the shop section. ♡");
+    } else {
+      axonSay("Ribbon Rain offers stickers, school labels, and bundles when they're available. Here are the products currently listed in the shop. ♡");
+      axonShowProductResults(state.products.filter(p => p.published !== false).slice().sort((a,b) => Number(a.price)-Number(b.price)).slice(0,4));
+      document.querySelector("#shop").scrollIntoView({behavior:"smooth"});
+    }
+    return;
+  }
+  if (has(/\\b(create|add|make|new)\\b.*\\b(listing|product|item)\\b|\\b(listing|product)\\b.*\\b(create|add|make)\\b/)) {
+    if (axonIsAdmin) axonSay("Absolutely — let's prepare a listing. I'll ask you to review it before anything is saved.");
     axonShowListingForm();
     return;
   }
-  if (/\b(cart|bag|basket)\b/.test(lower) || /\b(checkout|buy now)\b/.test(lower)) {
-    if (/checkout|buy now/.test(lower)) {
-      axonSay(state.cart.length ? "I'll open your bag so you can review the items and continue to checkout. Please check everything before placing an order." : "Your bag is empty right now. Let's find something lovely first.");
-    } else axonSay("Opening your shopping bag. ♡");
-    if (state.cart.length || !/checkout|buy now/.test(lower)) openCart();
-    else { document.querySelector("#shop").scrollIntoView({behavior:"smooth"}); }
+  if (has(/\\b(cart|bag|basket)\\b|\\b(checkout|buy now)\\b/)) {
+    if (has(/checkout|buy now/)) {
+      axonSay(state.cart.length ? "I'll open your bag so you can review the items and continue to checkout. Check everything carefully before placing an order. ♡" : "Your bag is empty right now. Let's find something lovely first. ♡");
+    } else axonSay(state.cart.length ? "Opening your bag — you've got " + state.cart.reduce((n, item) => n + item.quantity, 0) + " item(s) in it. ♡" : "Your bag is empty for now. Let's find something lovely to put in it. ♡");
+    if (state.cart.length || !has(/checkout|buy now/)) openCart();
+    else document.querySelector("#shop").scrollIntoView({behavior:"smooth"});
     return;
   }
-  if (/\b(home|homepage|top)\b/.test(lower)) {
-    window.scrollTo({top:0,behavior:"smooth"}); axonSay("Taking you back to the top of Ribbon Rain. ♡"); return;
+  if (has(/\\b(home|homepage|back to top|go to top)\\b/)) {
+    window.scrollTo({top:0,behavior:"smooth"});
+    axonSay("Taking you back to the top of Ribbon Rain. ♡");
+    return;
   }
-  if (/\b(faq|question|shipping|deliver|delivery)\b/.test(lower)) {
-    document.querySelector("#faq").scrollIntoView({behavior:"smooth"}); axonSay("Here are the shop FAQs. Shipping prices and live delivery quotes still need to be configured at checkout."); return;
+  if (has(/\\b(faq|faqs|shipping|deliver|delivery|shipping cost|delivery charge)\\b/)) {
+    document.querySelector("#faq").scrollIntoView({behavior:"smooth"});
+    axonSay("The FAQs are right here! Ribbon Rain plans to ship across India, but delivery charges and availability are confirmed only after shipping is configured. I don't want to guess a shipping price. ♡");
+    return;
   }
-  if (/\b(story|about|who are you|our story)\b/.test(lower)) {
-    document.querySelector("#story").scrollIntoView({behavior:"smooth"}); axonSay("Here's the little story behind Ribbon Rain. ♡"); return;
+  if (has(/\\b(story|about ribbon rain|who made this shop|our story)\\b/)) {
+    document.querySelector("#story").scrollIntoView({behavior:"smooth"});
+    axonSay("Here's the little story behind Ribbon Rain. ♡");
+    return;
   }
-  if (/\b(shop|browse|catalogue|catalog|products|stickers|labels|bundle|bundles|cheap|price|find|looking for|need|want)\b/.test(lower)) {
+  if (has(/\\b(colou?r|customi[sz]e|customi[sz]ation|personalise|personalize|change the design|change a design|different design|redesign)\\b/)) {
+    axonSay("The artwork on each product stays as shown, but you can choose from that product's listed colour options. Open a product and tap “Choose colours” to see what's available. ♡");
+    return;
+  }
+  if (has(/\\b(contact|talk to|speak to|message|human|real person|shop owner|mum|mom)\\b/)) {
+    axonSay("I can help with shopping, but this page doesn't currently show a verified contact method for the shop owner. Please use the contact channel the shop owner has shared with you; I won't invent an email address or phone number. ♡");
+    return;
+  }
+  if (has(/\\b(cheapest|cheap|affordable|budget|least expensive|most expensive|costliest|price|prices|how much|cost|under|below|recommend|recommendation|looking for|find|show|browse|shop|catalogue|catalog|products|stickers|labels|bundle|bundles|colour|color)\\b/)) {
     const products = axonProductMatches(text);
+    if (has(/\\b(under|below|less than)\\s*₹?\\s*\\d+/)) {
+      const amountMatch = lower.match(/\\b(?:under|below|less than)\\s*₹?\\s*(\\d+)/);
+      if (amountMatch) {
+        const budget = Number(amountMatch[1]);
+        const withinBudget = state.products.filter(p => p.published !== false && Number(p.price) <= budget).sort((a,b) => Number(a.price)-Number(b.price));
+        axonSay(withinBudget.length ? "Here are published products priced at ₹" + budget + " or less. ♡" : "I couldn't find any published products at ₹" + budget + " or less. Try a higher budget or browse the full shop. ♡");
+        if (withinBudget.length) axonShowProductResults(withinBudget.slice(0,4));
+        return;
+      }
+    }
+    if (products.length && has(/cheapest|cheap|affordable|budget|least expensive/)) {
+      axonSay("These are the lowest-priced matching items in the current catalogue. ♡");
+    }
     axonShowProductResults(products);
     document.querySelector("#shop").scrollIntoView({behavior:"smooth"});
     return;
   }
-  if (/\b(colou?r|custom|personal|design)\b/.test(lower)) {
-    axonSay("Each design stays as shown, but you can choose from the colours offered for that product. Tap “Choose colours” on a product to see its available options. ♡");
+  if (has(/\\b(help|what can you do|how do you work|options)\\b/)) {
+    axonSay("I can search the shop catalogue, show cheaper products, explain colour options, open your bag, take you to the FAQs or story, and help the authorised shop owner prepare a listing. Try “show me stickers”, “what do you sell?”, or “cheapest labels”. ♡");
     return;
   }
-  axonSay("I can help you find stickers, school labels, or bundles; open your bag; navigate to the FAQs or story; and help the authorised shop owner prepare listings. Try “show me stickers” or “open my bag”. ♡");
+  axonSay("I'm not sure I understood that yet. I'm best at helping with Ribbon Rain shopping: try “what do you sell?”, “show me stickers”, “cheapest labels”, “what colours can I choose?”, or “open my bag”. I don't have a general AI connection yet, so I'll be honest when something is outside my shop-helper features. ♡");
 }
 axonForm?.addEventListener("submit", event => {
   event.preventDefault();
