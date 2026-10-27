@@ -8,7 +8,7 @@ A cute, premium-minimal storefront for stickers and school labels, with warm whi
 
 - Responsive storefront with category filters, search, product details, available-colour choices, persistent bag/cart and delivery form.
 - Firebase Firestore catalogue: published products load automatically.
-- Shop-owner dashboard at /admin/: Google sign-in, product create/edit, publish/draft control, price and description edits, allowed colour options, and image uploads to Firebase Storage.
+- Shop-owner dashboard at /admin/: Google sign-in, product create/edit, publish/draft control, price and description edits, allowed colour options, and multiple image uploads to Firebase Storage (first new image becomes the main photo).
 - Admin order list with payment state, customer/delivery details and fulfilment-status updates.
 - Firestore and Storage security rules.
 - Vercel API scaffolding for server-side product/colour/price validation, shipping quote requests, Razorpay order creation, payment signature + captured-payment verification, and signed webhook reconciliation.
@@ -48,7 +48,7 @@ Import this repository into Vercel and deploy it. The root contains the static s
 - SHIPPING_RATE_API_TOKEN — optional bearer token for that adapter.
 - ALLOWED_ORIGIN — required exact storefront origin, such as https://your-project.vercel.app. Browser checkout requests are rejected if this is missing or does not match.
 
-The shipping adapter must accept a POST JSON body shaped like { "destination": { "...": "..." }, "items": [{ "productId": "...", "quantity": 1, "unitPrice": 100, "lineTotal": 100 }], "subtotalInr": 100 } and return { "amountInr": 40, "quoteId": "optional-provider-quote-id" }. This is an integration contract, **not a working shipping provider**. Implement/adapt it to the courier aggregator you choose, including PIN-code serviceability and address/order-based rates. Until a real adapter is configured, checkout deliberately returns an unavailable message.
+The shipping adapter must accept a POST JSON body shaped like { "destination": { "...": "..." }, "items": [{ "productId": "...", "quantity": 1, "unitPrice": 100, "lineTotal": 100 }], "subtotalInr": 100 } and return { "amountInr": 40, "quoteId": "optional-provider-quote-id", "serviceable": true }. Return serviceable: false when the address cannot be delivered to. This is an integration contract, **not a working shipping provider**. Implement/adapt it to the courier aggregator you choose, including PIN-code serviceability and address/order-based rates. Until a real adapter is configured, checkout deliberately returns an unavailable message.
 
 Configure the Razorpay webhook URL as https://YOUR-VERCEL-DOMAIN/api/razorpay-webhook and subscribe to payment.captured and/or order.paid. Use Razorpay test mode first. The adult business owner must complete Razorpay onboarding/KYC before live payments.
 
