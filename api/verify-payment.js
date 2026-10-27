@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { dbAdmin, send, cors, razorpayAuth, timingSafeHexEqual } from "./_lib.js";
+import { dbAdmin, send, cors, razorpayAuth, timingSafeHexEqual } from "../lib/api.js";
 
 export default async function handler(req, res) {
   if (!cors(req, res)) return send(res, 403, { error: "Origin not allowed." });
