@@ -283,27 +283,27 @@ When asked for recommendations, use only the catalogue above. You may compare th
 
 function axonApplyWebsiteAction(raw) {
   const lower = raw.toLowerCase();
-  if (/\\b(create|add|make|new)\\b.*\\b(listing|product|item)\\b|\\b(listing|product)\\b.*\\b(create|add|make)\\b/.test(lower)) {
+  if (/\b(create|add|make|new)\b.*\b(listing|product|item)\b|\b(listing|product)\b.*\b(create|add|make)\b/.test(lower)) {
     axonShowListingForm();
     return;
   }
-  if (/\\b(open|show|go to|view)\\b.{0,24}\\b(bag|cart|basket)\\b|\\b(open|show)\\s+my\\s+bag\\b/.test(lower)) {
+  if (/\b(open|show|go to|view)\b.{0,24}\b(bag|cart|basket)\b|\b(open|show)\s+my\s+bag\b/.test(lower)) {
     openCart();
     return;
   }
-  if (/\\b(go to|open|show|take me to)\\b.{0,24}\\b(faq|faqs|shipping questions)\\b/.test(lower)) {
+  if (/\b(go to|open|show|take me to)\b.{0,24}\b(faq|faqs|shipping questions)\b/.test(lower)) {
     document.querySelector("#faq").scrollIntoView({behavior:"smooth"});
     return;
   }
-  if (/\\b(go to|open|show|take me to)\\b.{0,24}\\b(story|about ribbon rain)\\b/.test(lower)) {
+  if (/\b(go to|open|show|take me to)\b.{0,24}\b(story|about ribbon rain)\b/.test(lower)) {
     document.querySelector("#story").scrollIntoView({behavior:"smooth"});
     return;
   }
-  if (/\\b(go to|open|show|take me to)\\b.{0,24}\\b(shop|products|catalogue|catalog)\\b/.test(lower)) {
+  if (/\b(go to|open|show|take me to)\b.{0,24}\b(shop|products|catalogue|catalog)\b/.test(lower)) {
     document.querySelector("#shop").scrollIntoView({behavior:"smooth"});
     return;
   }
-  if (/\\b(go to|back to|scroll to)\\b.{0,24}\\b(home|top|homepage)\\b/.test(lower)) {
+  if (/\b(go to|back to|scroll to)\b.{0,24}\b(home|top|homepage)\b/.test(lower)) {
     window.scrollTo({top:0,behavior:"smooth"});
   }
 }
@@ -326,7 +326,7 @@ async function axonSendToAI(prompt, user = auth?.currentUser) {
     const idToken = await getIdToken(user, true);
     const context = axonHistory.slice(-12).map(turn =>
       (turn.role === "user" ? "User" : "Axon") + ": " + turn.content
-    ).join("\\n").slice(-12000);
+    ).join("\n").slice(-12000);
     const response = await fetch(AXON_AI_ENDPOINT, {
       method: "POST",
       headers: {
@@ -361,7 +361,7 @@ async function axonSendToAI(prompt, user = auth?.currentUser) {
     if (axonHistory.length > 24) axonHistory.splice(0, axonHistory.length - 24);
 
     // Add clickable catalogue cards alongside AI advice when the user asks to browse.
-    if (/\\b(show|find|recommend|looking for|cheapest|affordable|budget|stickers|labels|bundles|products|what do you sell)\\b/i.test(prompt)) {
+    if (/\b(show|find|recommend|looking for|cheapest|affordable|budget|stickers|labels|bundles|products|what do you sell)\b/i.test(prompt)) {
       const matches = axonProductMatches(prompt);
       if (matches.length) axonShowProductResults(matches);
     }
