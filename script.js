@@ -45,6 +45,8 @@ const axonForm = document.querySelector("#axon-form");
 const axonInput = document.querySelector("#axon-input");
 const axonClose = document.querySelector("#axon-close");
 const axonSignIn = document.querySelector("#axon-signin");
+const siteSignIn = document.querySelector("#site-signin");
+const signInButtons = [axonSignIn, siteSignIn].filter(Boolean);
 const axonAuthStatus = document.querySelector("#axon-auth-status");
 let axonIsAdmin = false;
 let axonUser = null;
@@ -53,10 +55,10 @@ if (auth) {
   onAuthStateChanged(auth, async user => {
     axonUser = user;
     axonIsAdmin = false;
-    if (axonSignIn) {
-      axonSignIn.textContent = user ? "Signed in ✓" : "Sign in";
-      axonSignIn.disabled = Boolean(user);
-      axonSignIn.setAttribute("aria-label", user ? "Signed in to Axon" : "Sign in with Google to use Axon AI");
+    for (const button of signInButtons) {
+      button.textContent = user ? "Signed in ✓" : "Sign in";
+      button.disabled = Boolean(user);
+      button.setAttribute("aria-label", user ? "Signed in with Google" : "Sign in with Google");
     }
     if (axonAuthStatus) axonAuthStatus.textContent = user ? "AI chat · signed in" : "AI chat · sign in required";
     if (!user) return;
@@ -88,29 +90,39 @@ function axonHide() {
 }
 axonLauncher?.addEventListener("click", () => axonPanel.hidden ? axonOpen() : axonHide());
 axonClose?.addEventListener("click", axonHide);
-axonSignIn?.addEventListener("click", async () => {
+async function startGoogleSignIn(sourceButton) {
   if (auth?.currentUser) return;
-  axonSignIn.disabled = true;
-  axonSignIn.textContent = "Signing in…";
+  for (const button of signInButtons) {
+    button.disabled = true;
+    button.textContent = "Signing in…";
+  }
   try {
+    if (!auth || !googleProvider) throw new Error("Firebase Google sign-in is not configured.");
     const result = await signInWithPopup(auth, googleProvider);
     axonUser = result.user;
     const token = await getIdTokenResult(result.user, true);
     axonIsAdmin = token.claims.admin === true;
     if (axonAuthStatus) axonAuthStatus.textContent = "AI chat · signed in";
-    axonSay("You're signed in! Ask me anything. ♡");
+    if (sourceButton === axonSignIn) axonSay("You're signed in! Ask me anything. ♡");
+    if (siteSignIn) siteSignIn.title = "Signed in with Google";
   } catch (error) {
-    console.error("Axon Google sign-in failed:", error);
-    axonSay(error?.code === "auth/popup-closed-by-user"
-      ? "The sign-in window was closed. You can try again using the Sign in button above."
-      : "Google sign-in didn't work. Check that Google sign-in is enabled in Firebase Authentication and that this website's domain is authorized.");
+    console.error("Google sign-in failed:", error);
+    const message = error?.code === "auth/popup-closed-by-user"
+      ? "The sign-in window was closed. You can try again any time."
+      : "Google sign-in didn't work. Check Firebase Authentication and the site's authorized domains.";
+    if (sourceButton === axonSignIn) axonSay(message);
+    else window.alert(message);
   } finally {
     if (!auth?.currentUser) {
-      axonSignIn.disabled = false;
-      axonSignIn.textContent = "Sign in";
+      for (const button of signInButtons) {
+        button.disabled = false;
+        button.textContent = "Sign in";
+      }
     }
   }
-});
+}
+axonSignIn?.addEventListener("click", () => startGoogleSignIn(axonSignIn));
+siteSignIn?.addEventListener("click", () => startGoogleSignIn(siteSignIn));
 
 function axonProductMatches(term) {
   const normalized = term.toLowerCase();
