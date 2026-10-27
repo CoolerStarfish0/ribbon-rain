@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vercel dev",
-    "deploy:rules": "firebase deploy --only firestore:rules,storage"
+    "deploy:rules": "firebase deploy --only firestore:rules,storage",
+    "set:admin": "node scripts/set-admin.mjs"
   },
   "dependencies": {
     "firebase-admin": "^13.0.0"
