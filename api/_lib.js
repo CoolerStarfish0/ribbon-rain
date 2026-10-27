@@ -11,9 +11,8 @@ export function send(res, status, data) {
 export function cors(req, res) {
   const allowed = process.env.ALLOWED_ORIGIN;
   const origin = req.headers.origin;
-  if (allowed && origin && origin !== allowed) return false;
+  if (origin && (!allowed || origin !== allowed)) return false;
   if (allowed) res.setHeader("Access-Control-Allow-Origin", allowed);
-  else if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
