@@ -46,7 +46,7 @@ Import this repository into Vercel and deploy it. The root contains the static s
 - RAZORPAY_WEBHOOK_SECRET — a webhook secret you set in Razorpay Dashboard.
 - SHIPPING_RATE_API_URL — URL for a real shipping quote adapter.
 - SHIPPING_RATE_API_TOKEN — optional bearer token for that adapter.
-- ALLOWED_ORIGIN — optional exact storefront origin, such as https://your-project.vercel.app.
+- ALLOWED_ORIGIN — required exact storefront origin, such as https://your-project.vercel.app. Browser checkout requests are rejected if this is missing or does not match.
 
 The shipping adapter must accept a POST JSON body shaped like { "destination": { "...": "..." }, "items": [{ "productId": "...", "quantity": 1, "unitPrice": 100, "lineTotal": 100 }], "subtotalInr": 100 } and return { "amountInr": 40, "quoteId": "optional-provider-quote-id" }. This is an integration contract, **not a working shipping provider**. Implement/adapt it to the courier aggregator you choose, including PIN-code serviceability and address/order-based rates. Until a real adapter is configured, checkout deliberately returns an unavailable message.
 
