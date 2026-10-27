@@ -1,5 +1,5 @@
 import { firebaseReady, db, auth, googleProvider, storage } from "./firebase-client.js";
-import { onAuthStateChanged, signInWithPopup, getIdTokenResult } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { onAuthStateChanged, signInWithPopup, getIdToken, getIdTokenResult } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
 import { collection, getDocs, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
@@ -210,103 +210,177 @@ function axonShowListingForm() {
   axonMessages.appendChild(wrap);
   axonMessages.scrollTop = axonMessages.scrollHeight;
 }
-function axonRespond(raw) {
-  const text = raw.trim();
-  const lower = text.toLowerCase().replace(/[’']/g, "'");
-  const has = pattern => pattern.test(lower);
+const AXON_AI_ENDPOINT = "https://5158-ai-backendpriv.vercel.app/api/chat";
+const axonHistory = [];
+let axonBusy = false;
 
-  // Friendly small talk first, so greetings don't fall through to the help menu.
-  if (has(/^(hi|hello|hey|heya|hiya|yo|hii+|good morning|good afternoon|good evening)(\\s+axon)?[!.\\s]*$/)) {
-    const greetings = [
-      "Hey! ♡ Welcome to Ribbon Rain. Want to find stickers, school labels, or a cute little bundle?",
-      "Hiii! ✳ I'm here to help you shop. Tell me what you're looking for, or ask me about colours and prices.",
-      "Hey hey! ♡ What are we finding today — stickers, school labels, or something else?"
-    ];
-    axonSay(greetings[Math.floor(Math.random() * greetings.length)]);
-    return;
-  }
-  if (has(/^(thanks|thank you|thx|ty|thank u)(\\s+(axon|so much))?[!.\\s]*$/)) {
-    axonSay("You're so welcome! ♡ Let me know if you'd like help finding anything else.");
-    return;
-  }
-  if (has(/^(bye|goodbye|see you|cya|that's all|that is all)[!.\\s]*$/)) {
-    axonSay("Bye for now! ♡ Thanks for visiting Ribbon Rain.");
-    return;
-  }
-  if (has(/\\b(who are you|what are you|what is axon|who is axon)\\b/)) {
-    axonSay("I'm Axon, Ribbon Rain's little shopping helper. I can search the published catalogue, compare prices, explain colour choices, and help you navigate the shop. I'm not connected to a general-purpose AI service yet, so I won't pretend I can answer absolutely anything. ♡");
-    return;
-  }
-  if (has(/\\b(what do you sell|what does ribbon rain sell|what can i buy|what products do you have|show all products|everything you sell|your products)\\b/)) {
-    if (!state.products.filter(p => p.published !== false).length) {
-      axonSay("The live catalogue doesn't have any published products showing right now. You can check back soon, or browse the shop section. ♡");
-    } else {
-      axonSay("Ribbon Rain offers stickers, school labels, and bundles when they're available. Here are the products currently listed in the shop. ♡");
-      axonShowProductResults(state.products.filter(p => p.published !== false).slice().sort((a,b) => Number(a.price)-Number(b.price)).slice(0,4));
-      document.querySelector("#shop").scrollIntoView({behavior:"smooth"});
+function axonAddSignInButton(prompt) {
+  const row = document.createElement("div");
+  row.className = "axon-message axon-bot";
+  row.textContent = "To chat with Axon's AI, sign in with Google first. The AI service verifies Firebase sign-in on the server, so your message isn't sent without authentication. ♡";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "axon-action-button";
+  button.textContent = "Sign in with Google";
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    button.textContent = "Signing in…";
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      axonUser = result.user;
+      const token = await getIdTokenResult(result.user, true);
+      axonIsAdmin = token.claims.admin === true;
+      row.remove();
+      await axonSendToAI(prompt, result.user);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "Try Google sign-in again";
+      const note = document.createElement("p");
+      note.textContent = error?.code === "auth/popup-closed-by-user"
+        ? "The sign-in window was closed before sign-in finished."
+        : "Google sign-in didn't complete. Check Firebase Authentication setup and try again.";
+      row.appendChild(note);
     }
-    return;
-  }
-  if (has(/\\b(create|add|make|new)\\b.*\\b(listing|product|item)\\b|\\b(listing|product)\\b.*\\b(create|add|make)\\b/)) {
-    if (axonIsAdmin) axonSay("Absolutely — let's prepare a listing. I'll ask you to review it before anything is saved.");
+  });
+  row.appendChild(button);
+  axonMessages.appendChild(row);
+  axonMessages.scrollTop = axonMessages.scrollHeight;
+}
+
+function axonBuildSystemPrompt() {
+  const catalogue = state.products
+    .filter(product => product.published !== false)
+    .slice(0, 80)
+    .map(product => ({
+      id: String(product.id || ""),
+      name: String(product.name || ""),
+      category: String(product.category || ""),
+      priceINR: Number(product.price) || 0,
+      description: String(product.description || ""),
+      availableColours: Array.isArray(product.colours) ? product.colours : []
+    }));
+  return `You are Axon, the real AI shopping assistant for Ribbon Rain, a small Indian shop with the tagline "Made with love, wrapped in ribbons."
+
+PERSONALITY
+- Talk naturally, warmly, and directly, like a helpful conversational assistant. Answer ordinary small talk (including "how are you?") instead of forcing every message into a shopping menu.
+- Be concise by default, but explain when asked. A little gentle playfulness is fine; don't overdo emojis.
+- You are an AI assistant, not a human. Never claim to have feelings, taken actions, or checked systems you did not actually check.
+
+SHOP FACTS
+- The store sells stickers, school labels, and bundles when those items exist in the catalogue below.
+- Customers choose only among a product's listed available colours. They cannot freely redesign the artwork; each design stays as shown.
+- Prices are in Indian rupees (INR).
+- The website currently has shop navigation and a local shopping bag. Shipping charges and delivery availability must not be invented; the FAQ says shipping setup is still pending.
+- Do not claim that an order has been placed, a payment has succeeded, a listing has been saved, or the shop owner has been contacted unless the app explicitly confirms that action.
+- Do not invent products, prices, colours, discounts, stock, shipping dates, contact details, or business policies. If the catalogue is empty or lacks the requested detail, say so honestly.
+- Listing creation is a separate website action, protected by Firebase admin permissions. Never tell a shopper they can bypass that permission.
+
+CURRENT PUBLISHED CATALOGUE (source of truth):
+${JSON.stringify(catalogue)}
+
+When asked for recommendations, use only the catalogue above. You may compare the listed prices and suggest the best match for the user's stated needs. If the catalogue doesn't answer something, say what is unknown rather than guessing.`;
+}
+
+function axonApplyWebsiteAction(raw) {
+  const lower = raw.toLowerCase();
+  if (/\\b(create|add|make|new)\\b.*\\b(listing|product|item)\\b|\\b(listing|product)\\b.*\\b(create|add|make)\\b/.test(lower)) {
     axonShowListingForm();
     return;
   }
-  if (has(/\\b(cart|bag|basket)\\b|\\b(checkout|buy now)\\b/)) {
-    if (has(/checkout|buy now/)) {
-      axonSay(state.cart.length ? "I'll open your bag so you can review the items and continue to checkout. Check everything carefully before placing an order. ♡" : "Your bag is empty right now. Let's find something lovely first. ♡");
-    } else axonSay(state.cart.length ? "Opening your bag — you've got " + state.cart.reduce((n, item) => n + item.quantity, 0) + " item(s) in it. ♡" : "Your bag is empty for now. Let's find something lovely to put in it. ♡");
-    if (state.cart.length || !has(/checkout|buy now/)) openCart();
-    else document.querySelector("#shop").scrollIntoView({behavior:"smooth"});
+  if (/\\b(open|show|go to|view)\\b.{0,24}\\b(bag|cart|basket)\\b|\\b(open|show)\\s+my\\s+bag\\b/.test(lower)) {
+    openCart();
     return;
   }
-  if (has(/\\b(home|homepage|back to top|go to top)\\b/)) {
-    window.scrollTo({top:0,behavior:"smooth"});
-    axonSay("Taking you back to the top of Ribbon Rain. ♡");
-    return;
-  }
-  if (has(/\\b(faq|faqs|shipping|deliver|delivery|shipping cost|delivery charge)\\b/)) {
+  if (/\\b(go to|open|show|take me to)\\b.{0,24}\\b(faq|faqs|shipping questions)\\b/.test(lower)) {
     document.querySelector("#faq").scrollIntoView({behavior:"smooth"});
-    axonSay("The FAQs are right here! Ribbon Rain plans to ship across India, but delivery charges and availability are confirmed only after shipping is configured. I don't want to guess a shipping price. ♡");
     return;
   }
-  if (has(/\\b(story|about ribbon rain|who made this shop|our story)\\b/)) {
+  if (/\\b(go to|open|show|take me to)\\b.{0,24}\\b(story|about ribbon rain)\\b/.test(lower)) {
     document.querySelector("#story").scrollIntoView({behavior:"smooth"});
-    axonSay("Here's the little story behind Ribbon Rain. ♡");
     return;
   }
-  if (has(/\\b(colou?r|customi[sz]e|customi[sz]ation|personalise|personalize|change the design|change a design|different design|redesign)\\b/)) {
-    axonSay("The artwork on each product stays as shown, but you can choose from that product's listed colour options. Open a product and tap “Choose colours” to see what's available. ♡");
-    return;
-  }
-  if (has(/\\b(contact|talk to|speak to|message|human|real person|shop owner|mum|mom)\\b/)) {
-    axonSay("I can help with shopping, but this page doesn't currently show a verified contact method for the shop owner. Please use the contact channel the shop owner has shared with you; I won't invent an email address or phone number. ♡");
-    return;
-  }
-  if (has(/\\b(cheapest|cheap|affordable|budget|least expensive|most expensive|costliest|price|prices|how much|cost|under|below|recommend|recommendation|looking for|find|show|browse|shop|catalogue|catalog|products|stickers|labels|bundle|bundles|colour|color)\\b/)) {
-    const products = axonProductMatches(text);
-    if (has(/\\b(under|below|less than)\\s*₹?\\s*\\d+/)) {
-      const amountMatch = lower.match(/\\b(?:under|below|less than)\\s*₹?\\s*(\\d+)/);
-      if (amountMatch) {
-        const budget = Number(amountMatch[1]);
-        const withinBudget = state.products.filter(p => p.published !== false && Number(p.price) <= budget).sort((a,b) => Number(a.price)-Number(b.price));
-        axonSay(withinBudget.length ? "Here are published products priced at ₹" + budget + " or less. ♡" : "I couldn't find any published products at ₹" + budget + " or less. Try a higher budget or browse the full shop. ♡");
-        if (withinBudget.length) axonShowProductResults(withinBudget.slice(0,4));
-        return;
-      }
-    }
-    if (products.length && has(/cheapest|cheap|affordable|budget|least expensive/)) {
-      axonSay("These are the lowest-priced matching items in the current catalogue. ♡");
-    }
-    axonShowProductResults(products);
+  if (/\\b(go to|open|show|take me to)\\b.{0,24}\\b(shop|products|catalogue|catalog)\\b/.test(lower)) {
     document.querySelector("#shop").scrollIntoView({behavior:"smooth"});
     return;
   }
-  if (has(/\\b(help|what can you do|how do you work|options)\\b/)) {
-    axonSay("I can search the shop catalogue, show cheaper products, explain colour options, open your bag, take you to the FAQs or story, and help the authorised shop owner prepare a listing. Try “show me stickers”, “what do you sell?”, or “cheapest labels”. ♡");
+  if (/\\b(go to|back to|scroll to)\\b.{0,24}\\b(home|top|homepage)\\b/.test(lower)) {
+    window.scrollTo({top:0,behavior:"smooth"});
+  }
+}
+
+async function axonSendToAI(prompt, user = auth?.currentUser) {
+  if (axonBusy) {
+    axonSay("I'm still working on your last message — one moment. ♡");
     return;
   }
-  axonSay("I'm not sure I understood that yet. I'm best at helping with Ribbon Rain shopping: try “what do you sell?”, “show me stickers”, “cheapest labels”, “what colours can I choose?”, or “open my bag”. I don't have a general AI connection yet, so I'll be honest when something is outside my shop-helper features. ♡");
+  if (!user) {
+    axonAddSignInButton(prompt);
+    return;
+  }
+  axonBusy = true;
+  const thinking = axonSay("Axon is thinking…", "bot");
+  thinking.setAttribute("aria-label", "Axon is thinking");
+  const sendButton = axonForm?.querySelector('button[type="submit"]');
+  if (sendButton) sendButton.disabled = true;
+  try {
+    const idToken = await getIdToken(user, true);
+    const context = axonHistory.slice(-12).map(turn =>
+      (turn.role === "user" ? "User" : "Axon") + ": " + turn.content
+    ).join("\\n").slice(-12000);
+    const response = await fetch(AXON_AI_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + idToken
+      },
+      body: JSON.stringify({
+        prompt,
+        system: axonBuildSystemPrompt(),
+        context
+      })
+    });
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      throw new Error("Axon's AI server returned an unreadable response.");
+    }
+    if (!response.ok) {
+      if (response.status === 401) throw new Error("Your sign-in session expired. Please sign in again to continue chatting.");
+      if (response.status === 429) throw new Error(data.error || "Axon's AI usage limit has been reached for this account.");
+      if (response.status >= 500) throw new Error(data.error || "Axon's AI server couldn't reach the model. The local AI bridge may be offline.");
+      throw new Error(data.error || "Axon's AI request failed (HTTP " + response.status + ").");
+    }
+    if (typeof data.answer !== "string" || !data.answer.trim()) {
+      throw new Error("Axon's AI server returned an empty answer.");
+    }
+    thinking.remove();
+    const answer = data.answer.trim();
+    axonSay(answer);
+    axonHistory.push({role:"user",content:prompt},{role:"assistant",content:answer});
+    if (axonHistory.length > 24) axonHistory.splice(0, axonHistory.length - 24);
+
+    // Add clickable catalogue cards alongside AI advice when the user asks to browse.
+    if (/\\b(show|find|recommend|looking for|cheapest|affordable|budget|stickers|labels|bundles|products|what do you sell)\\b/i.test(prompt)) {
+      const matches = axonProductMatches(prompt);
+      if (matches.length) axonShowProductResults(matches);
+    }
+  } catch (error) {
+    thinking.remove();
+    console.error("Axon AI request failed:", error);
+    axonSay("I couldn't reach my AI brain just now. " + (error.message || "Please try again in a moment.") + " I won't pretend a canned reply is an AI answer. ♡");
+  } finally {
+    axonBusy = false;
+    if (sendButton) sendButton.disabled = false;
+    axonInput?.focus();
+  }
+}
+
+async function axonRespond(raw) {
+  const text = raw.trim();
+  if (!text) return;
+  axonApplyWebsiteAction(text);
+  await axonSendToAI(text);
 }
 axonForm?.addEventListener("submit", event => {
   event.preventDefault();
