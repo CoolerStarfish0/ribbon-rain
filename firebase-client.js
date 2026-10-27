@@ -6,12 +6,13 @@ import { getStorage } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-
 // Replace these values with the Web App configuration from Firebase Console.
 // Firebase web config is not a server secret. Never put service-account keys here.
 const firebaseConfig = {
-  apiKey: "REPLACE_WITH_FIREBASE_WEB_API_KEY",
-  authDomain: "REPLACE_WITH_PROJECT.firebaseapp.com",
-  projectId: "REPLACE_WITH_PROJECT_ID",
-  storageBucket: "REPLACE_WITH_PROJECT.firebasestorage.app",
-  messagingSenderId: "REPLACE_WITH_SENDER_ID",
-  appId: "REPLACE_WITH_APP_ID"
+  apiKey: "AIzaSyAgaUU0n51PSgVZcw5pcnw83vHT04hivjs",
+  authDomain: "ribbon-rain.firebaseapp.com",
+  projectId: "ribbon-rain",
+  storageBucket: "ribbon-rain.firebasestorage.app",
+  messagingSenderId: "219851913959",
+  appId: "1:219851913959:web:916741f78e7fa464998042",
+  measurementId: "G-FE9ZZLKVKK"
 };
 export const firebaseReady = Boolean(firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith("REPLACE_") && firebaseConfig.projectId && !firebaseConfig.projectId.startsWith("REPLACE_"));
 export const app = firebaseReady ? initializeApp(firebaseConfig) : null;
