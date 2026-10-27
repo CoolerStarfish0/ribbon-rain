@@ -19,6 +19,7 @@ export default async function handler(req, res) {
     });
     if (!shippingResponse.ok) throw new Error("The shipping provider could not calculate a rate.");
     const shipping = await shippingResponse.json();
+    if (shipping.serviceable === false) return send(res, 400, { error: "Delivery is not available for that address yet. Please check the PIN code or contact the shop." });
     const shippingInr = Number(shipping.amountInr);
     if (!Number.isSafeInteger(shippingInr) || shippingInr < 0 || shippingInr > 100000) throw new Error("The shipping provider returned an invalid rate.");
     const totalInr = subtotalInr + shippingInr;
