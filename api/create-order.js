@@ -45,7 +45,8 @@ export default async function handler(req, res) {
     }
   } catch (error) {
     console.error("create-order error:", error.message);
-    const msg = /required|invalid|cart|product|colour|address|PIN|phone|email/i.test(error.message) ? error.message : "Could not prepare checkout. Please try again later.";
-    return send(res, 400, { error: msg });
+    const isInputError = /required|invalid|cart|product|colour|address|PIN|phone|email|empty or too large|not available/i.test(error.message);
+    const msg = isInputError ? error.message : "Could not prepare checkout. Please try again later.";
+    return send(res, isInputError ? 400 : 500, { error: msg });
   }
 }
