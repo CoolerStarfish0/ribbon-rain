@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { dbAdmin } from "./_lib.js";
+import { dbAdmin } from "../lib/api.js";
 
 export const config = { api: { bodyParser: false } };
 async function rawBody(req) {
